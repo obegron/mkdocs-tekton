@@ -103,20 +103,20 @@ def test_multi_document_yaml_processing(plugin, mock_config, tmp_path):
     plugin.load_config({})
     plugin.on_config(mock_config)
     yaml_content = """
-kind: Pipeline
-metadata:
-  name: pipeline1
-spec:
-  tasks:
-    - name: task1
----
-kind: Pipeline
-metadata:
-  name: pipeline2
-spec:
-  tasks:
-    - name: task2
-"""
+    kind: Pipeline
+    metadata:
+      name: pipeline1
+    spec:
+      tasks:
+        - name: task1
+    ---
+    kind: Pipeline
+    metadata:
+      name: pipeline2
+    spec:
+      tasks:
+        - name: task2
+    """
     yaml_file = tmp_path / "multi_pipeline.yaml"
     yaml_file.write_text(yaml_content)
 
@@ -171,7 +171,7 @@ def test_nav_default_structure_generation(plugin, mock_config):
     }
     task_versions = {
         "group2": {
-            "task1": [("1.0", "path/to/task1.md")]
+            "task1": {"versions": [("1.0", "path/to/task1.md")]}
         }
     }
 
@@ -211,7 +211,11 @@ def test_nav_structure_generation(plugin, mock_config):
             ],
         }
     }
-    task_versions = {"group2": {"task1": {"versions": [("1.0", "path/to/task1.md")]}}}
+    task_versions = {
+        "group2": {
+            "task1": {"versions": [("1.0", "path/to/task1.md")]}
+        }
+    }
 
     mock_nav = []
     plugin._update_navigation(mock_nav, pipeline_versions, task_versions)

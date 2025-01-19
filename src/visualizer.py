@@ -96,9 +96,9 @@ class PipelineVisualizer(BasePlugin):
             if not file.src_path.endswith(".yaml"):
                 continue
 
-            processed_files = self._process_yaml_file(file, config, pipeline_versions, task_versions)
-            if processed_files:
-                new_files.extend(processed_files)
+            processed_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
+            if processed_file:
+                new_files.append(processed_file)
 
         if self.nav_generation:
             self._update_navigation(config["nav"], pipeline_versions, task_versions)
@@ -124,7 +124,7 @@ class PipelineVisualizer(BasePlugin):
                     if kind in ["pipeline", "task"]:
                         self._add_to_versions(resource, new_file, kind, pipeline_versions, task_versions)
 
-        return new_file
+        return new_file  # Return single file
 
     def _load_yaml(self, file_path):
         """Load YAML file, supporting multiple documents"""
@@ -632,13 +632,32 @@ The `runAfter` parameter is optional and only needed if you want to specify task
 
         # Handle task versions
         if task_versions:
-            flat_tasks = {}
-            for group, tasks in task_versions.items():
-                for task_name, task_info in tasks.items():
-                    versions = task_info.get('versions', [])
-                    if versions:
-                        flat_tasks[task_name] = versions
-            self._add_to_nav(tasks_section, flat_tasks)
+            if self.nav_group_tasks_by_category:
+                categories = {}
+                uncategorized = {}
+                
+                for task_name, task_info in task_versions.items():
+                    versions = task_info['versions']
+                    task_categories = task_info['categories']
+                    
+                    if not task_categories:
+                        uncategorized[task_name] = versions
+                    else:
+                        for category in task_categories:
+                            categories.setdefault(category, {})[task_name] = versions
+                
+                if uncategorized:
+                    self._add_to_nav(tasks_section, uncategorized)
+                
+                for category in sorted(categories.keys()):
+                    category_section = self._find_or_create_section(tasks_section, category)
+                    self._add_to_nav(category_section, categories[category])
+            else:
+                # Keep task group hierarchy
+                for group_name, group_tasks in task_versions.items():
+                    group_section = self._find_or_create_section(tasks_section, group_name)
+                    task_dict = {name: info['versions'] for name, info in group_tasks.items()}
+                    self._add_to_nav(group_section, task_dict)
 
     def _find_or_create_section(self, nav, section_name):
         self.logger.debug("Finding or creating navigation section: %s", section_name)
