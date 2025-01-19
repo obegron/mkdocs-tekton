@@ -66,18 +66,16 @@ def test_markdown_file_creation(plugin, mock_config, tmp_path):
     plugin.load_config(mock_config)
     plugin.on_config(mock_config)
 
-    yaml_content = """
-    kind: Pipeline
-    metadata:
-      name: test-pipeline
-      labels:
-        app.kubernetes.io/version: "0.1"
-    spec:
-      tasks:
-        - name: task1
-          taskRef:
-            name: task-reference
-    """
+    yaml_content = """kind: Pipeline
+metadata:
+  name: test-pipeline
+  labels:
+    app.kubernetes.io/version: "0.1"
+spec:
+  tasks:
+    - name: task1
+      taskRef:
+        name: task-reference"""
     yaml_file = tmp_path / "test_pipeline.yaml"
     yaml_file.write_text(yaml_content)
 
@@ -102,21 +100,21 @@ def test_markdown_file_creation(plugin, mock_config, tmp_path):
 def test_multi_document_yaml_processing(plugin, mock_config, tmp_path):
     plugin.load_config({})
     plugin.on_config(mock_config)
-    yaml_content = """
-    kind: Pipeline
-    metadata:
-      name: pipeline1
-    spec:
-      tasks:
-        - name: task1
-    ---
-    kind: Pipeline
-    metadata:
-      name: pipeline2
-    spec:
-      tasks:
-        - name: task2
-    """
+    
+    yaml_content = """kind: Pipeline
+metadata:
+  name: pipeline1
+spec:
+  tasks:
+    - name: task1
+---
+kind: Pipeline
+metadata:
+  name: pipeline2
+spec:
+  tasks:
+    - name: task2"""
+    
     yaml_file = tmp_path / "multi_pipeline.yaml"
     yaml_file.write_text(yaml_content)
 

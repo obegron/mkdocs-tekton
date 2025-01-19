@@ -96,9 +96,9 @@ class PipelineVisualizer(BasePlugin):
             if not file.src_path.endswith(".yaml"):
                 continue
 
-            processed_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
-            if processed_file:
-                new_files.append(processed_file)
+            new_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
+            if new_file:
+                new_files.append(new_file)
 
         if self.nav_generation:
             self._update_navigation(config["nav"], pipeline_versions, task_versions)
@@ -115,23 +115,26 @@ class PipelineVisualizer(BasePlugin):
         # Generate combined content for all resources
         content = self._generate_markdown_content(resources)
         new_file = self._create_markdown_file(file, config, content)
-
+        
         # Add versions for each resource
-        if self.nav_generation:
+        if self.nav_generation and new_file:
             for resource in resources:
-                if isinstance(resource, dict) and "kind" in resource:
-                    kind = resource["kind"].lower()
-                    if kind in ["pipeline", "task"]:
-                        self._add_to_versions(resource, new_file, kind, pipeline_versions, task_versions)
+                kind = resource.get("kind", "").lower()
+                if kind in ["pipeline", "task"]:
+                    self._add_to_versions(resource, new_file, kind, pipeline_versions, task_versions)
 
-        return new_file  # Return single file
+        return new_file
 
     def _load_yaml(self, file_path):
         """Load YAML file, supporting multiple documents"""
         try:
             with open(file_path, "r") as f:
-                documents = list(yaml.safe_load_all(f))
-                return [doc for doc in documents if doc]  # Filter out None values
+                content = f.read().strip()
+                if not content:
+                    return None
+                documents = list(yaml.safe_load_all(content))
+                valid_docs = [doc for doc in documents if doc and isinstance(doc, dict)]
+                return valid_docs if valid_docs else None
         except yaml.YAMLError as e:
             self.logger.error("Error parsing YAML file %s: %s", file_path, e)
             return None
