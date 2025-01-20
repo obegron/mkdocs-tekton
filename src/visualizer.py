@@ -567,8 +567,10 @@ The `runAfter` parameter is optional and only needed if you want to specify task
                 "categories": categories
             })["versions"].append((version_str, path))
         elif kind == "pipeline":
-            # Add to pipeline versions
+            # Get group path without version directories
             group = self._get_group(file.src_path, self.nav_pipeline_grouping_offset)
+            # Add debug logging
+            self.logger.debug(f"Adding pipeline {name} to group {group}")
             pipeline_versions.setdefault(group, {}).setdefault(name, []).append((version_str, path))
 
     def _semantic_version_key(self, version_str):
@@ -606,15 +608,38 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         pipelines_section = self._find_or_create_section(nav, self.nav_section_pipelines)
         tasks_section = self._find_or_create_section(nav, self.nav_section_tasks)
 
-        # Handle pipeline versions
         if pipeline_versions:
+            grouped_pipelines = {}
+            
+            # First pass - build nested structure
             for group, pipelines in pipeline_versions.items():
-                current_section = pipelines_section
-                if group:
-                    # Split by forward slash to maintain directory structure
-                    for part in group.split('/'):
-                        current_section = self._find_or_create_section(current_section, part)
-                self._add_to_nav(current_section, pipelines)
+                parts = [p for p in group.split('/') if p]
+                current = grouped_pipelines
+                
+                # Build full path
+                for part in parts:
+                    if part not in current:
+                        current[part] = {}
+                    current = current[part]
+                
+                # Add pipelines to leaf node
+                for name, versions in pipelines.items():
+                    if isinstance(current, dict):
+                        current[name] = versions
+
+            # Second pass - build navigation
+            def build_nav(section, structure):
+                for key, value in sorted(structure.items()):
+                    if isinstance(value, list):
+                        # Direct pipeline versions
+                        self._add_to_nav(section, {key: value})
+                    else:
+                        # Nested structure
+                        subsection = self._find_or_create_section(section, key)
+                        build_nav(subsection, value)
+
+            self.logger.debug(f"Final structure: {grouped_pipelines}")
+            build_nav(pipelines_section, grouped_pipelines)
 
         # Handle task versions
         if task_versions:
