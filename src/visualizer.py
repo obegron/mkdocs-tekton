@@ -19,6 +19,7 @@ class PipelineVisualizer(BasePlugin):
         ("nav_pipeline_grouping_offset", config_options.Type(str, default=None)),
         ("nav_task_grouping_offset", config_options.Type(str, default=None)),
         ("nav_group_tasks_by_category", config_options.Type(bool, default=False)),
+        ("nav_category_mapping", config_options.Type(dict, default={})),
         (
             "log_level",
             config_options.Choice(
@@ -637,7 +638,6 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         # Handle task versions
         if task_versions:
             if self.nav_group_tasks_by_category:
-                # Handle categorized tasks
                 categories = {}
                 uncategorized = {}
                 
@@ -649,18 +649,17 @@ The `runAfter` parameter is optional and only needed if you want to specify task
                         uncategorized[task_name] = versions
                     else:
                         for category in task_categories:
-                            categories.setdefault(category, {})[task_name] = versions
+                            # Map category name if configured
+                            mapped_category = self.config["nav_category_mapping"].get(category, category)
+                            categories.setdefault(mapped_category, {})[task_name] = versions
                 
-                # Add uncategorized tasks
                 if uncategorized:
                     self._add_to_nav(tasks_section, uncategorized)
                 
-                # Add categorized tasks
                 for category in sorted(categories.keys()):
                     category_section = self._find_or_create_section(tasks_section, category)
                     self._add_to_nav(category_section, categories[category])
             else:
-                # Handle non-categorized tasks - extract just the versions
                 simplified_versions = {
                     name: info['versions'] for name, info in task_versions.items()
                 }
