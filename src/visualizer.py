@@ -589,13 +589,10 @@ The `runAfter` parameter is optional and only needed if you want to specify task
                 }
             task_versions[name]['versions'].append((version, path))
 
-    def _semantic_version_key(self, version_tuple):
-        """Helper for semantic version sorting"""
-        ver, _ = version_tuple
-        if not ver:
-            return version.parse("0.0.0")
+    def _semantic_version_key(self, version_str):
+        """Convert version string to comparable tuple"""
         try:
-            return version.parse(ver)
+            return version.parse(version_str or "0.0.0")
         except version.InvalidVersion:
             return version.parse("0.0.0")
 
@@ -606,7 +603,11 @@ The `runAfter` parameter is optional and only needed if you want to specify task
             return
 
         for resource_name, versions in sorted(resources.items()):
-            sorted_versions = sorted(versions, key=self._semantic_version_key, reverse=True)
+            sorted_versions = sorted(
+                [(v[0], v[1]) for v in versions], 
+                key=lambda x: self._semantic_version_key(x[0]), 
+                reverse=True
+            )
             
             if len(sorted_versions) == 1:
                 nav_section.append({resource_name: sorted_versions[0][1]})
@@ -624,7 +625,7 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         pipelines_section = self._find_or_create_section(nav, self.nav_section_pipelines)
         tasks_section = self._find_or_create_section(nav, self.nav_section_tasks)
 
-        # Handle pipeline versions with groups
+        # Handle pipeline versions
         if pipeline_versions:
             for group, pipelines in pipeline_versions.items():
                 current_section = pipelines_section
@@ -636,12 +637,13 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         # Handle task versions
         if task_versions:
             if self.nav_group_tasks_by_category:
+                # Handle categorized tasks
                 categories = {}
                 uncategorized = {}
                 
                 for task_name, task_info in task_versions.items():
                     versions = task_info['versions']
-                    task_categories = task_info['categories']
+                    task_categories = task_info.get('categories', [])
                     
                     if not task_categories:
                         uncategorized[task_name] = versions
@@ -649,18 +651,20 @@ The `runAfter` parameter is optional and only needed if you want to specify task
                         for category in task_categories:
                             categories.setdefault(category, {})[task_name] = versions
                 
+                # Add uncategorized tasks
                 if uncategorized:
                     self._add_to_nav(tasks_section, uncategorized)
                 
+                # Add categorized tasks
                 for category in sorted(categories.keys()):
                     category_section = self._find_or_create_section(tasks_section, category)
                     self._add_to_nav(category_section, categories[category])
             else:
-                # Keep task group hierarchy
-                for group_name, group_tasks in task_versions.items():
-                    group_section = self._find_or_create_section(tasks_section, group_name)
-                    task_dict = {name: info['versions'] for name, info in group_tasks.items()}
-                    self._add_to_nav(group_section, task_dict)
+                # Handle non-categorized tasks - extract just the versions
+                simplified_versions = {
+                    name: info['versions'] for name, info in task_versions.items()
+                }
+                self._add_to_nav(tasks_section, simplified_versions)
 
     def _find_or_create_section(self, nav, section_name):
         self.logger.debug("Finding or creating navigation section: %s", section_name)
