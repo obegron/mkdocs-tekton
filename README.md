@@ -46,13 +46,15 @@ By default, the plugin creates two sections at the root level: Pipelines and Tas
 | ---------------- | ---- | ----------- | ------- | -------------- |
 | `plantuml_graphs`| **[bool]** | Controls if pipeline graph should be visible | `True` | 0.1.5 |
 | `plantuml_graph_direction` | **[string]** | TB(top to bottom) or LR(left to right) | `TB` | 0.1.3 |
-| `plantuml_theme` | **[string]** | any theme listed on https://plantuml.com/theme to style e.g hacker, spacelab | `_none_` | 0.1.3 |
-| `nav_generation` | **[bool]** | automatically generate navigation tree | `True` | 0.2.0 |
-| `nav_section_pipelines` | **[string]** | section name used for pipelines | `Pipelines` | 0.2.0 |
-| `nav_section_tasks` | **[string]** | section name used for tasks | `Tasks` | 0.2.0 |
+| `plantuml_theme` | **[string]** | Any theme listed on https://plantuml.com/theme to style e.g hacker, spacelab | `_none_` | 0.1.3 |
+| `nav_generation` | **[bool]** | Automatically generate navigation tree | `True` | 0.2.0 |
+| `nav_group_tasks_by_category` | **[bool]** | Group tasks in navigation by `tekton.dev/categories` annotation | `False` | 0.3.0 |
+| `nav_section_pipelines` | **[string]** | Section name used for pipelines | `Pipelines` | 0.2.0 |
+| `nav_section_tasks` | **[string]** | Section name used for tasks | `Tasks` | 0.2.0 |
 | `nav_pipeline_grouping_offset` | **[string]** | Controls how pipeline file paths are represented in the navigation structure. The format is "start:end", where: "start" is the index of the first directory to include "end" is the index of the last directory to include (use negative numbers to count from the end) | `None` | 0.2.0 |
-| `nav_task_grouping_offset` | **[string]** | same as `nav_pipeline_grouping_offset` but for tasks | `None` | 0.2.0 |
+| `nav_task_grouping_offset` | **[string]** | Same as `nav_pipeline_grouping_offset` but for tasks | `None` | 0.2.0 |
 | `log_level` | **[string]** | `DEBUG INFO WARNING ERROR CRITICAL` | `INFO` | 0.2.0 |
+| `nav_category_mapping` | **[dict]** | Custom category name mappings | `{}` | 0.3.0 |
 
 ### Example for `nav_pipeline_grouping_offset`
 
@@ -115,10 +117,26 @@ plugins:
   - pipeline-visualizer:
       plantuml_theme: hacker
       nav_section_tasks: "🛠️ Tasks"
-      nav_section_pipelines: "🚀 Pipelines"
+      nav_section_pipelines: "🚀 Pipelines"      
+```
+
+### Category Name Mapping
+
+You can customize how task categories appear in the navigation by providing mappings in the `nav_category_mapping` configuration:
+
+```yaml
+plugins:
+  - pipeline-visualizer:
+      nav_category_mapping:
+        "Code Quality": "Quality Tools"
+        "Build": "Build Tools"
+        "Deploy": "Deployment"
 ```
 
 ## Changelog
+
+### 0.3.0
+* Added optional support for categorization of tasks in navigation using `tekton.dev/categories` annotation
 
 ### 0.2.1
 
