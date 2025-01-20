@@ -100,7 +100,7 @@ spec:
 def test_multi_document_yaml_processing(plugin, mock_config, tmp_path):
     plugin.load_config({})
     plugin.on_config(mock_config)
-    
+
     yaml_content = """kind: Pipeline
 metadata:
   name: pipeline1
@@ -114,7 +114,7 @@ metadata:
 spec:
   tasks:
     - name: task2"""
-    
+
     yaml_file = tmp_path / "multi_pipeline.yaml"
     yaml_file.write_text(yaml_content)
 
@@ -170,7 +170,7 @@ def test_nav_default_structure_generation(plugin, mock_config):
     task_versions = {
         "task1": {
             "categories": ["Category1"],
-            "versions": [("1.0", "path/to/task1.md")]
+            "versions": [("1.0", "path/to/task1.md")],
         }
     }
 
@@ -201,10 +201,7 @@ def test_nav_structure_generation(plugin, mock_config):
     }
     # Update task structure to match new format
     task_versions = {
-        "task1": {
-            "versions": [("1.0", "path/to/task1.md")],
-            "categories": []
-        }
+        "task1": {"versions": [("1.0", "path/to/task1.md")], "categories": []}
     }
 
     mock_nav = []
@@ -326,16 +323,14 @@ def test_add_to_versions_with_invalid_grouping_offset(plugin):
 def test_task_category_grouping(plugin, mock_config):
     plugin.load_config({"nav_group_tasks_by_category": True})
     plugin.on_config(mock_config)
-    
+
     task_metadata = {
         "metadata": {
             "name": "test-task",
-            "annotations": {
-                "tekton.dev/categories": "Code Quality, Testing"
-            }
+            "annotations": {"tekton.dev/categories": "Code Quality, Testing"},
         }
     }
-    
+
     categories = plugin._get_task_categories(task_metadata.get("metadata"))
     assert categories == ["Code Quality", "Testing"]
 
@@ -343,13 +338,9 @@ def test_task_category_grouping(plugin, mock_config):
 def test_task_without_category(plugin, mock_config):
     plugin.load_config({"nav_group_tasks_by_category": True})
     plugin.on_config(mock_config)
-    
-    task_metadata = {
-        "metadata": {
-            "name": "test-task"
-        }
-    }
-    
+
+    task_metadata = {"metadata": {"name": "test-task"}}
+
     categories = plugin._get_task_categories(task_metadata.get("metadata"))
     assert categories == []
 
@@ -357,23 +348,21 @@ def test_task_without_category(plugin, mock_config):
 def test_add_to_versions_with_category(plugin, mock_config):
     plugin.load_config({"nav_group_tasks_by_category": True})
     plugin.on_config(mock_config)
-    
+
     task = {
         "kind": "Task",
         "metadata": {
             "name": "test-task",
-            "annotations": {
-                "tekton.dev/categories": "Testing"
-            }
-        }
+            "annotations": {"tekton.dev/categories": "Testing"},
+        },
     }
-    
+
     pipeline_versions = {}
     task_versions = {}
     new_file = File("test-task.md", "", "", "")
-    
+
     plugin._add_to_versions(task, new_file, "task", pipeline_versions, task_versions)
-    
+
     assert "test-task" in task_versions
     assert task_versions["test-task"]["categories"] == ["Testing"]
     assert len(task_versions["test-task"]["versions"]) == 1
