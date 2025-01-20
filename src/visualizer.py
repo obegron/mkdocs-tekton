@@ -611,7 +611,8 @@ The `runAfter` parameter is optional and only needed if you want to specify task
             for group, pipelines in pipeline_versions.items():
                 current_section = pipelines_section
                 if group:
-                    for part in group.split(os.sep):
+                    # Split by forward slash to maintain directory structure
+                    for part in group.split('/'):
                         current_section = self._find_or_create_section(current_section, part)
                 self._add_to_nav(current_section, pipelines)
 
@@ -694,7 +695,10 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         if not offset:
             return ""
             
-        parts = os.path.dirname(path).split(os.sep)
+        # Normalize path separators to forward slashes
+        path = path.replace('\\', '/')
+        parts = os.path.dirname(path).split('/')
+        
         if len(parts) <= 1:
             return ""
             
@@ -710,8 +714,8 @@ The `runAfter` parameter is optional and only needed if you want to specify task
         if start >= len(parts) or end > len(parts) or start < 0:
             return ""
             
-        group_parts = parts[start:end]
-        return os.sep.join(group_parts) if group_parts else ""
+        # Keep full path structure between start and end
+        return '/'.join(parts[start:end])
 
     def _get_relative_path(self, from_path, to_path):
         """Generate relative path between two documents"""
