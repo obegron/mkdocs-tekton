@@ -30,6 +30,10 @@ class PipelineVisualizer(BasePlugin):
 
     def __init__(self):
         self.logger = logging.getLogger("mkdocs.plugins.pipeline_visualizer")
+        self._processed_files = {}
+        self._task_paths = {}  # Store relative paths for tasks
+        self.in_serve_mode = False
+        self.current_file = None  # Track current file being processed
 
     def on_config(self, config):
         self.nav_task_grouping_offset = self._parse_grouping_offset(
@@ -93,13 +97,27 @@ class PipelineVisualizer(BasePlugin):
         task_versions = {}
         new_files = []
 
+        # Process tasks first to build task reference map
         for file in files:
             if not file.src_path.endswith(".yaml"):
                 continue
+                
+            resources = self._load_yaml(file.abs_src_path)
+            if resources and any(r.get("kind", "").lower() == "task" for r in resources):
+                new_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
+                if new_file:
+                    new_files.append(new_file)
 
-            new_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
-            if new_file:
-                new_files.append(new_file)
+        # Then process pipelines with complete task reference map
+        for file in files:
+            if not file.src_path.endswith(".yaml"):
+                continue
+                
+            resources = self._load_yaml(file.abs_src_path)
+            if resources and any(r.get("kind", "").lower() == "pipeline" for r in resources):
+                new_file = self._process_yaml_file(file, config, pipeline_versions, task_versions)
+                if new_file:
+                    new_files.append(new_file)
 
         if self.nav_generation:
             self._update_navigation(config["nav"], pipeline_versions, task_versions)
@@ -113,17 +131,21 @@ class PipelineVisualizer(BasePlugin):
             self.logger.warning("Failed to load YAML file: %s", file.abs_src_path)
             return None
 
-        # Generate combined content for all resources
+        # Sort resources to ensure tasks are processed first
+        resources.sort(key=lambda x: x.get("kind", "") != "Task")
+        
+        # Store current file for relative path calculations
+        self.current_file = file
+        
         content = self._generate_markdown_content(resources)
         new_file = self._create_markdown_file(file, config, content)
         
-        # Add versions for each resource
-        if self.nav_generation and new_file:
+        if new_file:
             for resource in resources:
                 kind = resource.get("kind", "").lower()
                 if kind in ["pipeline", "task"]:
                     self._add_to_versions(resource, new_file, kind, pipeline_versions, task_versions)
-
+        
         return new_file
 
     def _load_yaml(self, file_path):
@@ -321,54 +343,19 @@ class PipelineVisualizer(BasePlugin):
         markdown_content = "## Tasks\n\n"
         for task in tasks:
             task_name = task.get("name", "Unnamed Task")
+            task_ref = task.get("taskRef", {})
             markdown_content += f"### {task_name}\n\n"
 
-            # Task Reference
-            task_ref = task.get("taskRef", {})
-            markdown_content += (
-                f"**Task Reference:** `{task_ref.get('name', 'Not specified')}`\n\n"
-            )
+            # Task Reference with relative link if available
+            ref_name = task_ref.get('name', 'Not specified')
+            if ref_name in self._task_paths:
+                target_path = self._task_paths[ref_name]['path']
+                relative_path = self._get_relative_path(self.current_file.src_path, target_path)
+                markdown_content += f"**Task Reference:** [`{ref_name}`]({relative_path})\n\n"
+            else:
+                markdown_content += f"**Task Reference:** `{ref_name}`\n\n"
 
-            # Run After
-            run_after = task.get("runAfter", [])
-            if run_after:
-                markdown_content += "**Runs After:**\n\n"
-                for dep in run_after:
-                    markdown_content += f"- `{dep}`\n"
-                markdown_content += "\n"
             markdown_content += self._visualize_common_elements(task)
-
-            # Parameters
-            params = task.get("params", [])
-            if params:
-                markdown_content += self._table_with_header(
-                    "**Parameters**", ["Name", "Value"]
-                )
-                for param in params:
-                    name = param.get("name", "Unnamed Parameter")
-                    value = self._format_value(param.get("value", ""))
-                    if "<br>" in str(value) or "<ul>" in str(value) or value == "":
-                        markdown_content += f"| `{name}` | {value} |\n"
-                    else:
-                        markdown_content += f"| `{name}` | `{value}` |\n"
-                markdown_content += "\n"
-
-            # Workspaces
-            workspaces = task.get("workspaces", [])
-            if workspaces:
-                markdown_content += self._table_with_header(
-                    "**Workspaces**", ["Name", "Workspace"]
-                )
-                for workspace in workspaces:
-                    name = workspace.get("name", "Unnamed Workspace")
-                    workspace_name = workspace.get("workspace", "Not specified")
-                    markdown_content += f"| `{name}` | `{workspace_name}` |\n"
-                markdown_content += "\n"
-
-            # Environment Variables
-            markdown_content += self._visualize_environment(task.get("env", []))
-            markdown_content += "---\n\n"
-
         return markdown_content
 
     def _visualize_steps(self, steps):
@@ -559,36 +546,30 @@ The `runAfter` parameter is optional and only needed if you want to specify task
             return [c.strip() for c in categories.split(",")] if categories else []
         return []
 
-    def _add_to_versions(self, resource, new_file, kind, pipeline_versions, task_versions):
-        """Add resource versions to appropriate dictionary"""
+    def _add_to_versions(self, resource, file, kind, pipeline_versions, task_versions):
         metadata = resource.get("metadata", {})
-        name = metadata.get("name", "Unnamed")
-        version = metadata.get("labels", {}).get("app.kubernetes.io/version", "latest")
-        path = os.path.normpath(new_file.src_path)
-        
-        if kind == "pipeline":
-            group = ""
-            if self.nav_pipeline_grouping_offset:
-                start, end = self.nav_pipeline_grouping_offset
-                path_parts = path.split(os.sep)
-                if 0 <= start < len(path_parts) and end < 0:
-                    group_parts = path_parts[start:end]
-                    if "pipelines" in group_parts:
-                        group_parts.remove("pipelines")
-                    group = os.path.normpath(os.sep.join(group_parts)) if group_parts else ""
+        name = metadata.get("name", "Unnamed Resource")
+        version_label = metadata.get("labels", {}).get("app.kubernetes.io/version", "")
+        version_str = version_label
+        path = file.src_path.replace("\\", "/")
 
-            if group not in pipeline_versions:
-                pipeline_versions[group] = {}
-            if name not in pipeline_versions[group]:
-                pipeline_versions[group][name] = []
-            pipeline_versions[group][name].append((version, path))
-        else:  # Task
-            if name not in task_versions:
-                task_versions[name] = {
-                    'versions': [],
-                    'categories': self._get_task_categories(metadata)
-                }
-            task_versions[name]['versions'].append((version, path))
+        if kind == "task":
+            # Store task reference with version comparison
+            current_version = self._task_paths.get(name, {}).get('version', '')
+            if not current_version or self._semantic_version_key(version_label) > self._semantic_version_key(current_version):
+                self._task_paths[name] = {'version': version_label, 'path': path}
+                
+            # Add to task versions
+            categories = metadata.get("annotations", {}).get("tekton.dev/categories", "").split(",")
+            categories = [c.strip() for c in categories if c.strip()]
+            task_versions.setdefault(name, {
+                "versions": [],
+                "categories": categories
+            })["versions"].append((version_str, path))
+        elif kind == "pipeline":
+            # Add to pipeline versions
+            group = self._get_group(file.src_path, self.nav_pipeline_grouping_offset)
+            pipeline_versions.setdefault(group, {}).setdefault(name, []).append((version_str, path))
 
     def _semantic_version_key(self, version_str):
         """Convert version string to comparable tuple"""
@@ -598,7 +579,6 @@ The `runAfter` parameter is optional and only needed if you want to specify task
             return version.parse("0.0.0")
 
     def _add_to_nav(self, nav_section, resources):
-        """Add resources to navigation section"""
         if not isinstance(resources, dict):
             self.logger.error("Resources must be a dictionary, got %s", type(resources))
             return
@@ -708,3 +688,60 @@ The `runAfter` parameter is optional and only needed if you want to specify task
                 current_level.append(new_dict)
                 current_level = new_dict[part]
         return current_level
+
+    def _get_group(self, path, offset):
+        """Extract group from path based on offset"""
+        if not offset:
+            return ""
+            
+        parts = os.path.dirname(path).split(os.sep)
+        if len(parts) <= 1:
+            return ""
+            
+        start, end = offset
+        if end is None:
+            end = len(parts)
+        
+        # Adjust negative end index
+        if end < 0:
+            end = len(parts) + end
+            
+        # Validate indices
+        if start >= len(parts) or end > len(parts) or start < 0:
+            return ""
+            
+        group_parts = parts[start:end]
+        return os.sep.join(group_parts) if group_parts else ""
+
+    def _get_relative_path(self, from_path, to_path):
+        """Generate relative path between two documents"""
+        # Normalize paths to use forward slashes
+        from_path = from_path.replace('\\', '/').rstrip('/')
+        to_path = to_path.replace('\\', '/').rstrip('/')
+        
+        # Split paths into components
+        from_parts = from_path.split('/')
+        to_parts = to_path.split('/')
+        
+        # Remove filenames to work with directories
+        from_dir = from_parts[:-1]
+        to_dir = to_parts[:-1]
+        
+        # Calculate common prefix length
+        common_length = 0
+        for f, t in zip(from_dir, to_dir):
+            if f != t:
+                break
+            common_length += 1
+        
+        # Build relative path with .md extension
+        up_levels = len(from_dir) - common_length
+        remaining_path = to_parts[common_length:]
+        
+        relative_path = '../' * up_levels + '/'.join(remaining_path)
+        
+        # Ensure path ends with .md
+        if not relative_path.endswith('.md'):
+            relative_path += '.md'
+        
+        return relative_path
